@@ -42,6 +42,8 @@ TEST ?=
 
 build: env switch-check $(KERNEL_BIN) fs-img 
 
+build-syscall-fs-img: env switch-check $(KERNEL_BIN) syscall-fs-img
+
 switch-check:
 ifeq ($(BOARD), qemu)
 	(which last-qemu) || (rm -f last-k210 && touch last-qemu && make clean)
@@ -68,6 +70,11 @@ fs-img: $(APPS)
 	@rm -f $(FS_IMG)
 	@cd ../easy-fs-fuse && cargo run --release -- -s ../user/src/bin/ -t ../user/target/riscv64gc-unknown-none-elf/release/
 
+syscall-fs-img: $(APPS)
+	@cd ../busybox
+	@rm -f $(FS_IMG)
+	@cd ../easy-fs-fuse && cargo run --release -- -s ../busybox/ -t ../user/target/riscv64gc-unknown-none-elf/release/
+
 $(APPS):
 
 kernel:
@@ -90,6 +97,21 @@ disasm-vim: kernel
 run: run-inner
 
 gui: build
+ifeq ($(BOARD),qemu)
+	@qemu-system-riscv64 \
+		-M 128m \
+		-machine virt \
+		-bios $(BOOTLOADER) \
+		-device loader,file=$(KERNEL_BIN),addr=$(KERNEL_ENTRY_PA) \
+		-drive file=$(FS_IMG),if=none,format=raw,id=x0 \
+        -device virtio-blk-device,drive=x0 \
+		-device virtio-gpu-device  \
+		-device virtio-keyboard-device  \
+		-device virtio-mouse-device \
+		-serial stdio 
+endif
+
+linux-syscall: build-syscall-fs-img
 ifeq ($(BOARD),qemu)
 	@qemu-system-riscv64 \
 		-M 128m \
